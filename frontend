@@ -1,0 +1,103 @@
+import streamlit as st
+import pandas as pd
+from backend_fitness import FitnessDB # Assuming the file is named backend_fitness.py
+import uuid
+
+# --- Database Connection ---
+# Replace with your PostgreSQL connection details
+DB_NAME = "fitness_tracker"
+DB_USER = "your_db_user"
+DB_PASSWORD = "your_db_password"
+DB_HOST = "localhost"
+DB_PORT = "5432"
+
+db = FitnessDB(DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT)
+
+# --- Streamlit Frontend ---
+st.title("Personal Fitness Tracker 🏋️‍♀️")
+
+# --- Tabs for navigation ---
+tab1, tab2, tab3, tab4 = st.tabs(["User Management", "Log Workout", "Leaderboard", "Business Insights"])
+
+# --- User Management Tab ---
+with tab1:
+    st.header("User Management")
+    
+    with st.expander("Create User"):
+        user_name = st.text_input("User Name")
+        email = st.text_input("Email")
+        weight = st.number_input("Weight (kg)", min_value=0.0, format="%.2f")
+        if st.button("Create User"):
+            if db.create_user(user_name, email, weight):
+                st.success(f"User '{user_name}' created successfully!")
+            else:
+                st.error("Failed to create user. Email may already exist.")
+    
+    with st.expander("Update/Delete User"):
+        # This part assumes a user has already been created. In a real app, you'd list users.
+        user_id_to_manage = st.text_input("User ID to Manage", key="user_id_manage")
+        if st.button("Fetch User"):
+            user_data = db.get_user(user_id_to_manage)
+            if user_data:
+                st.session_state.current_user = user_data
+                st.success(f"User fetched: {user_data[1]}")
+            else:
+                st.error("User not found.")
+
+        if 'current_user' in st.session_state and st.session_state.current_user:
+            st.write(f"**Current User:** {st.session_state.current_user[1]}")
+            new_name = st.text_input("New Name", st.session_state.current_user[1], key="new_name")
+            new_email = st.text_input("New Email", st.session_state.current_user[2], key="new_email")
+            new_weight = st.number_input("New Weight", value=st.session_state.current_user[3], min_value=0.0, format="%.2f", key="new_weight")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Update User"):
+                    if db.update_user(st.session_state.current_user[0], new_name, new_email, new_weight):
+                        st.success("User updated successfully!")
+                        st.session_state.current_user = db.get_user(st.session_state.current_user[0])
+                    else:
+                        st.error("Failed to update user.")
+            with col2:
+                if st.button("Delete User"):
+                    if db.delete_user(st.session_state.current_user[0]):
+                        st.success("User deleted successfully.")
+                        st.session_state.current_user = None
+                    else:
+                        st.error("Failed to delete user.")
+
+
+# --- Log Workout Tab ---
+with tab2:
+    st.header("Log a New Workout")
+    
+    user_id_log = st.text_input("Enter your User ID", key="user_id_log_workout")
+    workout_duration = st.number_input("Workout Duration (minutes)", min_value=1, step=1)
+    
+    if st.button("Log Workout"):
+        if not db.get_user(user_id_log):
+            st.error("User ID not found. Please create a user first.")
+        else:
+            if db.create_workout(user_id_log, workout_duration):
+                st.success("Workout logged successfully!")
+            else:
+                st.error("Failed to log workout.")
+
+# --- Leaderboard Tab ---
+with tab3:
+    st.header("Fitness Leaderboard")
+    leaderboard_data = db.get_leaderboard()
+    if leaderboard_data:
+        df_leaderboard = pd.DataFrame(leaderboard_data, columns=["User Name", "Total Workout Duration (min)"])
+        st.dataframe(df_leaderboard)
+    else:
+        st.info("No workout data available yet.")
+
+# --- Business Insights Tab ---
+with tab4:
+    st.header("Business Insights")
+    insights_data = db.get_business_insights()
+    if insights_data:
+        st.json(insights_data)
+    else:
+        st.warning("Could not retrieve insights. Check database connection.")
